@@ -41,6 +41,9 @@ up compiler.
   - Add pre-processor to build the cell list
   - Allow reading of file
   - Allow conversion of IR to machine code
+  - Fix interpretation of complex bf program:
+
+>++++++++[-<+++++++++>]<.>>+>-[+]++>++>+++[>[->+++<<+++>]<<]>-----.>->+++..+++.>-.<<+[>[+>+]>>]<--------------.>>.+++.------.--------.>+.>+.
 -}
 module Bfi where
 
