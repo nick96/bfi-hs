@@ -35,6 +35,12 @@ the execution stage, is because it gives me more flexibility. I can
 include optimizations without having to rewrite everything and in the
 future I'll be able to turn it into a JIT compiler, or even a straight
 up compiler.
+
+= TODO
+
+  - Add pre-processor to build the cell list
+  - Allow reading of file
+  - Allow conversion of IR to machine code
 -}
 module Bfi where
 
@@ -42,20 +48,19 @@ import Data.Char
 
 -- | Structure to represent the data constructs in a Brainfuck program.
 data Construct
-    = DecVal
-    | IncVal
-    | NextCell
-    | PrevCell
-    | Print
-    | Input
-    | Loop [Construct]
-    deriving (Eq)
+  = DecVal
+  | IncVal
+  | NextCell
+  | PrevCell
+  | Print
+  | Loop [Construct]
+  deriving (Show, Eq)
 
 -- | Modelling of the program state.
 data Model =
-    Model Int
-          Int
-          [Int]
+  Model Int -- Current value
+        Int -- Current cell
+        [Int] -- Cells
 
 -- | Main entry point for the program.
 main :: IO ()
@@ -63,25 +68,71 @@ main = putStrLn "Not implemented."
 
 -- | Parse the Brainfuck file string into the `Construct` data type.
 parse :: String -> [Construct]
-parse _ = [DecVal]
+parse [] = []
+parse (c:cs)
+  | c == '-' = DecVal : (parse cs)
+  | c == '+' = IncVal : (parse cs)
+  | c == '<' = PrevCell : (parse cs)
+  | c == '>' = NextCell : (parse cs)
+  | c == '.' = Print : (parse cs)
+  | c == '[' = (Loop (parse loop)) : (parse afterLoop)
+  where
+    loop = breakAwayLoop cs
+    afterLoop = skipLoop cs
+
+-- | Break the loop away from the reset of the program.
+breakAwayLoop :: String -> String
+breakAwayLoop [] = ""
+breakAwayLoop (c:cs)
+  | c == ']' = ""
+  | otherwise = c : (breakAwayLoop cs)
+
+-- | Skip over the loop code.
+skipLoop :: String -> String
+skipLoop "" = ""
+skipLoop (c:cs)
+  | c == ']' = cs
+  | otherwise = skipLoop cs
 
 -- | Execute the Brainfuck program represented by the `Construct` list.
 execute :: [Construct] -> Model -> String
 execute [] _ = ""
 execute (x:xs) (Model val index cells)
-    | x == DecVal = execute xs (Model (val - 1) index cells)
-    | x == IncVal = execute xs (Model (val + 1) index cells)
-    | x == NextCell = execute xs (Model 0 (index + 1) (updateNth index cells))
-    | x == PrevCell = execute xs (Model 0 (index - 1) (updateNth index cells))
-    | x == Print = (chr val) : (execute xs (Model val index cells))
-    | x == Input = do
-        c <- getChar
-        execute xs (Model (ord c) index cells)
-    | x == Loop loop = execute xs (loopOp loop loop (Model val index cells))
+  | x == Print = (chr val) : (execute xs (Model val index cells))
+  | otherwise = execute xs (execConstruct x (Model val index cells))
 
-updateNth :: Int -> [Int] -> [Int]
-updateNth _ xs = xs
+-- | Execute a singular construct and return its effects on the model.
+execConstruct :: Construct -> Model -> Model
+execConstruct DecVal (Model val index cells) = Model (val - 1) index cells
+execConstruct IncVal (Model val index cells) = Model (val + 1) index cells
+execConstruct PrevCell (Model val index cells) =
+  Model (getNth newIndex cells) newIndex updatedCells
+  where
+    newIndex = index - 1
+    updatedCells = updateNth index val cells
+execConstruct NextCell (Model val index cells) =
+  Model (getNth newIndex cells) newIndex updatedCells
+  where
+    newIndex = index + 1
+    updatedCells = updateNth index val cells
+execConstruct (Loop loop) model = loopOp loop loop model
+execConstruct Print _ = error "Reached pattern that should not be reached."
 
+-- | Get the nth value from a list
+getNth :: Int -> [a] -> a
+getNth 0 (x:_) = x
+getNth _ [] = error "nth element of list does not exist."
+getNth n (_:xs) = getNth (n - 1) xs
+
+-- | Update the nth value in a list
+updateNth :: Int -> a -> [a] -> [a]
+updateNth 0 newVal (_:xs) = newVal : xs
+updateNth _ _ [] = error "nth element of list does not exist."
+updateNth n newVal (x:xs) = x : (updateNth (n - 1) newVal xs)
+
+-- | Evaluate a loop construct
 loopOp :: [Construct] -> [Construct] -> Model -> Model
-loopOp original curr (Model 0 index cells) = (Model 0 index cells)
-loopOp _ _ _ = Model 0 0 []
+loopOp original [] (Model val index cells)
+  | val == 0 = (Model val index cells) -- End of loop
+  | otherwise = loopOp original original (Model val index cells)
+loopOp orginal (x:xs) model = loopOp orginal xs (execConstruct x model)
