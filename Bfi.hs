@@ -60,16 +60,15 @@ data Construct
   deriving (Show, Eq)
 
 -- | Modelling of the program state.
-data Model =
-  Model Int -- Current value
-        Int -- Current cell
-        [Int] -- Cells
-
--- | Main entry point for the program.
-main :: IO ()
-main = putStrLn "Not implemented."
+data Model = Model
+  { currVal :: Int
+  , currCell :: Int
+  , cells :: [Int]
+  , nesting :: Int
+  }
 
 -- | Parse the Brainfuck file string into the `Construct` data type.
+-- Bug: Doesn't parse nested loops properly
 parse :: String -> [Construct]
 parse [] = []
 parse (c:cs)
@@ -78,46 +77,60 @@ parse (c:cs)
   | c == '<' = PrevCell : (parse cs)
   | c == '>' = NextCell : (parse cs)
   | c == '.' = Print : (parse cs)
-  | c == '[' = (Loop (parse loop)) : (parse afterLoop)
-  where
-    loop = breakAwayLoop cs
-    afterLoop = skipLoop cs
+  | c == '[' = (Loop (parseLoop 0 cs)) : (parse (skipLoop 0 0 cs))
+  | otherwise = parse cs -- Ignore all other characters
 
--- | Break the loop away from the reset of the program.
-breakAwayLoop :: String -> String
-breakAwayLoop [] = ""
-breakAwayLoop (c:cs)
-  | c == ']' = ""
-  | otherwise = c : (breakAwayLoop cs)
+-- | Parse loop, it is a bit different to the normal parser because it
+-- ends at ']' rather than the end of the program. In the future it
+-- might be good idea to generalise and put them in the same function
+-- but this works for now.
+parseLoop :: Int -> String -> [Construct]
+parseLoop 0 [] = []
+parseLoop _ [] = error "parseLoop: Unbalanced loop"
+parseLoop nest (c:cs)
+  | c == '-' = DecVal : (parseLoop nest cs)
+  | c == '+' = IncVal : (parseLoop nest cs)
+  | c == '<' = PrevCell : (parseLoop nest cs)
+  | c == '>' = NextCell : (parseLoop nest cs)
+  | c == '.' = Print : (parseLoop nest cs)
+  | c == '[' =
+    Loop (parseLoop (nest + 1) cs) :
+    (parseLoop (nest + 1) (skipLoop nest (nest + 1) cs))
+  | c == ']' = []
+  | otherwise = parseLoop nest cs
 
 -- | Skip over the loop code.
-skipLoop :: String -> String
-skipLoop "" = ""
-skipLoop (c:cs)
-  | c == ']' = cs
-  | otherwise = skipLoop cs
+skipLoop :: Int -> Int -> String -> String
+skipLoop _ _ [] = error "skipLoop: Unbalanced loop"
+skipLoop origNest nest (c:cs)
+  | c == ']' && nest == origNest = cs
+  | c == ']' && nest /= origNest = skipLoop origNest (nest - 1) cs
+  | c == '[' = skipLoop origNest (nest + 1) cs
+  | otherwise = skipLoop origNest nest cs
 
 -- | Execute the Brainfuck program represented by the `Construct` list.
 execute :: [Construct] -> Model -> String
 execute [] _ = ""
-execute (x:xs) (Model val index cells)
-  | x == Print = (chr val) : (execute xs (Model val index cells))
-  | otherwise = execute xs (execConstruct x (Model val index cells))
+execute (x:xs) model
+  | x == Print = (chr (currVal model)) : (execute xs model)
+  | otherwise = execute xs (execConstruct x model)
 
 -- | Execute a singular construct and return its effects on the model.
 execConstruct :: Construct -> Model -> Model
-execConstruct DecVal (Model val index cells) = Model (val - 1) index cells
-execConstruct IncVal (Model val index cells) = Model (val + 1) index cells
-execConstruct PrevCell (Model val index cells) =
-  Model (getNth newIndex cells) newIndex updatedCells
-  where
-    newIndex = index - 1
-    updatedCells = updateNth index val cells
-execConstruct NextCell (Model val index cells) =
-  Model (getNth newIndex cells) newIndex updatedCells
-  where
-    newIndex = index + 1
-    updatedCells = updateNth index val cells
+execConstruct DecVal model = model {currVal = (currVal model) - 1}
+execConstruct IncVal model = model {currVal = (currVal model) + 1}
+execConstruct PrevCell model =
+  model
+  { currVal = (getNth ((currCell model) - 1) (cells model))
+  , currCell = (currCell model) - 1
+  , cells = (updateNth (currCell model) (currVal model) (cells model))
+  }
+execConstruct NextCell model =
+  model
+  { currVal = (getNth ((currCell model) + 1) (cells model))
+  , currCell = (currCell model) + 1
+  , cells = (updateNth (currCell model) (currVal model) (cells model))
+  }
 execConstruct (Loop loop) model = loopOp loop loop model
 execConstruct Print _ = error "Reached pattern that should not be reached."
 
@@ -135,7 +148,7 @@ updateNth n newVal (x:xs) = x : (updateNth (n - 1) newVal xs)
 
 -- | Evaluate a loop construct
 loopOp :: [Construct] -> [Construct] -> Model -> Model
-loopOp original [] (Model val index cells)
-  | val == 0 = (Model val index cells) -- End of loop
-  | otherwise = loopOp original original (Model val index cells)
+loopOp original [] model
+  | (currVal model) == 0 = model -- End of loop
+  | otherwise = loopOp original original model
 loopOp orginal (x:xs) model = loopOp orginal xs (execConstruct x model)
