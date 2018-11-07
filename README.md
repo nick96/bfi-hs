@@ -2,24 +2,22 @@
 
 Brainfuck interpreter in Haskell.
 
-Brainfuck is a simple language that emulate a Turing Machine. It is
-made up of a series of cells that contain values which allow the
-following operations on them: 
+Brainfuck is a simple but Turing complete language. Like a Turing machine, its memory is a tape containing adjacent cells.
+We can perform the following operations on each cell: 
 
-#. Increment value
-#. Decrement value
-#. Print character value
-#. Read in character value
+1. Increment value
+2. Decrement value
+3. Print character value
+4. Read in character value
 
-You can also increment and decrement the cell number you are using. To
-make it a Turing Machine, Brainfuck also has a looping contruct. This
-means there are only eight operators in brain fuck:
+There is also the ability to move the tape head left or right (like in a Turing Machine). Each of these operations is
+represented by a single character:
 
-#. +: Increment cell value
-#. -: Decrement cell value
-#. >: Move to next cell
-#. <: Move to previous cell
-#. .: Print character value of current cell
-#. ,: Read character value into current cell
-#. [: Loop start
-#. ]: Loop end, continue past if current cell's value is 0
+1. +: Increment cell value
+2. -: Decrement cell value
+3. \>: Move to next cell
+4. <: Move to previous cell
+5. .: Print character value of current cell
+6. ,: Read character value into current cell
+7. [: Loop start
+8. ]: Loop end, continue past if current cell's value is 0
